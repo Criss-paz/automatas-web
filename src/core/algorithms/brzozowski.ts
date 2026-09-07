@@ -59,7 +59,9 @@ export function brzozowski(input: Automaton, opts: { finalName?: string } = {}):
       (finalStates(A).length > 1
         ? `Como A tenia ${finalStates(A).length} estados finales, el reverso queda con ${finalStates(A).length} estados iniciales. Se dejan asi a proposito: si en su lugar se agregara un estado inicial nuevo unido a ellos con ${EPSILON}, ese estado postizo haria que la determinizacion del paso siguiente distinguiera subconjuntos que solo se diferencian en el, y el resultado ya no seria el minimo. La determinizacion simplemente arranca desde la clausura-ε de todos los iniciales a la vez. `
         : '') +
-      `El resultado reconoce el lenguaje invertido Lʳ y en general es un AFN, aunque A fuera un AFD.`,
+      `El resultado reconoce el lenguaje invertido Lʳ y en general es un AFN, aunque A fuera un AFD. ` +
+      `En el dibujo se puede comprobar que cada flecha de A aparece con origen y destino intercambiados, ` +
+      `y que las marcas de inicio y final también cambiaron.`,
     table: { caption: 'Tabla de transiciones de Aʳ', ...transitionTable(R1) },
     automaton: R1,
   })

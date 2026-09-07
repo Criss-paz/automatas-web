@@ -56,6 +56,21 @@ q1, b -> q2`
     const eq = checkEquivalence(nfa, dfa)
     expect(eq.equivalent).toBe(true)
   })
+
+  it('muestra graficamente la clausura, los subconjuntos y el AFD resultante', () => {
+    const nfa = parseFormal(`Q = {q0,q1,q2}
+Sigma = {a,b}
+inicial = q0
+F = {q2}
+q0, e -> q1
+q1, a -> q2
+q2, b -> q2`).automaton!
+    const result = subsetConstruction(nfa)
+    expect(result.steps.find((step) => step.title.includes('Clausura'))?.automaton).toBeDefined()
+    expect(result.steps.find((step) => step.title.includes('Tabla de subconjuntos'))?.automaton).toBeDefined()
+    expect(result.steps.find((step) => step.title.includes('AFD resultante'))?.automaton).toBeDefined()
+    expect(result.steps.filter((step) => step.table).length).toBeGreaterThanOrEqual(3)
+  })
 })
 
 describe('minimizacion', () => {
@@ -68,6 +83,14 @@ describe('minimizacion', () => {
       const tab = minimizeTableFilling(dfa).automaton
       expect(brz.states.length, `regex ${re}`).toBe(tab.states.length)
     }
+  })
+
+  it('expone los cuatro pasos de Brzozowski con automata y tabla', () => {
+    const result = brzozowski(subsetConstruction(fromRegex('(a|b)*abb')).automaton)
+    const algorithmSteps = result.steps.filter((step) => /^Paso [1-4]/.test(step.title))
+    expect(algorithmSteps).toHaveLength(4)
+    expect(algorithmSteps.every((step) => step.automaton)).toBe(true)
+    expect(algorithmSteps.every((step) => step.table)).toBe(true)
   })
 
   it('el minimo siempre es equivalente al original', () => {

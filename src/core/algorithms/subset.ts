@@ -49,18 +49,22 @@ export function subsetConstruction(nfa: Automaton, opts: { name?: string; keepEm
     steps.push({
       title: 'Paso 1 · Clausura-ε de cada estado',
       body:
-        `La **clausura-ε** de un estado q es el conjunto de estados a los que se llega desde q ` +
-        `usando solo transiciones ${EPSILON} (incluido el propio q). Es lo que permite eliminar las transiciones vacias.`,
+        `La **clausura-ε** de un estado q es el grupo de estados al que se puede llegar desde q ` +
+        `siguiendo cero o más transiciones ${EPSILON}, sin consumir ningún símbolo del alfabeto (incluido el propio q). ` +
+        `Primero calculamos estos grupos porque todos sus estados representan la misma situación después de leer la palabra. ` +
+        `El dibujo conserva las transiciones ${EPSILON} para que se vea qué caminos se recorren; todavía no es el AFD final.`,
       table: {
         caption: 'Clausura-ε individual',
         headers: ['Estado q', 'clausura-ε(q)'],
         rows: nfa.states.map((s) => [s.label, setLabel(nfa, epsilonClosure(nfa, [s.id]))]),
       },
+      automaton: autoLayout({ ...nfa, name: 'AFN de partida · transiciones ε visibles' }),
     })
   } else {
     steps.push({
       title: 'Paso 1 · Sin transiciones ε',
       body: `El automata no tiene transiciones ${EPSILON}, asi que la clausura-ε de cada estado es el propio estado y se puede pasar directo a la construccion de subconjuntos.`,
+      automaton: autoLayout({ ...nfa, name: 'AFN de partida · sin transiciones ε' }),
     })
   }
 
@@ -103,13 +107,15 @@ export function subsetConstruction(nfa: Automaton, opts: { name?: string; keepEm
       (inits.length > 1
         ? ` (el automata tiene ${inits.length} estados iniciales, asi que se parte de la clausura-ε de todos ellos a la vez). `
         : '. ') +
-      `Para cada subconjunto T y cada simbolo a se calcula **clausura-ε(δ(T, a))**. ` +
-      `Cada subconjunto nuevo que aparece se agrega a la tabla y se procesa a su vez, hasta que no surjan mas.`,
+      `Para cada subconjunto T y cada símbolo a: primero se mueven todos los estados de T con a, ` +
+      `y después se vuelve a tomar la clausura-ε de los destinos. ` +
+      `Cada grupo nuevo se convierte en un estado del AFD y se agrega a la tabla hasta que no aparezcan más.`,
     table: {
       caption: 'Cada fila es un estado del AFD; cada celda, el subconjunto de estados del AFN al que se llega',
       headers: ['Subconjunto', ...alphabet],
       rows: traceRows,
     },
+    automaton: autoLayout({ ...nfa, name: 'AFN recorrido para construir los subconjuntos' }),
   })
 
   // --- Paso 3: armar el AFD -------------------------------------------------
