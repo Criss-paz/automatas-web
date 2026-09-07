@@ -7,7 +7,9 @@ import {
   initialStates,
   isDeterministic,
   move,
+  joinWord,
   removeUnreachable,
+  tokenizeWord,
   transitionTable,
 } from '../automaton'
 import { subsetConstruction } from './subset'
@@ -88,9 +90,10 @@ export function checkEquivalence(
   interface Node {
     p: string
     q: string
-    word: string
+    /** Simbolos leidos para llegar aqui; se unen al final para formar la cadena. */
+    syms: string[]
   }
-  const start: Node = { p: iA.id, q: iB.id, word: '' }
+  const start: Node = { p: iA.id, q: iB.id, syms: [] }
   const seen = new Set<string>([`${start.p}|${start.q}`])
   const queue: Node[] = [start]
   const rows: string[][] = []
@@ -102,7 +105,8 @@ export function checkEquivalence(
     const fb = finB(node.q)
     const pairName = `(${labA(node.p)}, ${labB(node.q)})`
     const status = fa === fb ? (fa ? 'ambos finales ✓' : 'ninguno final ✓') : '¡DIFIEREN! ✗'
-    const row = [node.word === '' ? 'ε' : node.word, pairName, status]
+    const nodeWord = joinWord(alphabet, node.syms)
+    const row = [nodeWord === '' ? 'ε' : nodeWord, pairName, status]
 
     if (fa !== fb) {
       rows.push(row)
@@ -117,7 +121,7 @@ export function checkEquivalence(
       row.push(`${sym} → (${labA(np)}, ${labB(nq)})`)
       if (!seen.has(k)) {
         seen.add(k)
-        queue.push({ p: np, q: nq, word: node.word + sym })
+        queue.push({ p: np, q: nq, syms: [...node.syms, sym] })
       }
     }
     rows.push(row)
@@ -137,7 +141,8 @@ export function checkEquivalence(
 
   // --- Paso 3: conclusion ---------------------------------------------------
   if (bad) {
-    const w = bad.word === '' ? 'ε (cadena vacia)' : bad.word
+    const badWord = joinWord(alphabet, bad.syms)
+    const w = badWord === '' ? 'ε (cadena vacia)' : badWord
     const acceptedBy = finA(bad.p) ? names[0] : names[1]
     const rejectedBy = finA(bad.p) ? names[1] : names[0]
     steps.push({
@@ -154,7 +159,7 @@ export function checkEquivalence(
     })
     return {
       equivalent: false,
-      counterexample: { word: bad.word, acceptedBy, rejectedBy },
+      counterexample: { word: badWord, acceptedBy, rejectedBy },
       steps,
     }
   }
@@ -186,17 +191,20 @@ export function bruteForceCompare(
   const alphabet = [...new Set([...inferAlphabet(a1), ...inferAlphabet(a2)])].sort()
   const mismatches: Array<{ word: string; r1: boolean; r2: boolean }> = []
   const rows: string[][] = []
-  let words: string[] = ['']
+  // Se generan como listas de simbolos y se unen al final: con simbolos de
+  // varios caracteres concatenar sin separador seria ambiguo.
+  let words: string[][] = [[]]
   let tested = 0
 
   for (let len = 0; len <= maxLen; len++) {
     if (len > 0) {
-      const next: string[] = []
-      for (const w of words) for (const s of alphabet) next.push(w + s)
+      const next: string[][] = []
+      for (const w of words) for (const s of alphabet) next.push([...w, s])
       words = next
     }
     if (words.length > 4000) break
-    for (const w of words) {
+    for (const syms of words) {
+      const w = joinWord(alphabet, syms)
       tested++
       const r1 = accepts(a1, w)
       const r2 = accepts(a2, w)
@@ -247,15 +255,13 @@ export function simulate(a: Automaton, word: string): SimulationResult {
   let current = closure(inits.map((s) => s.id))
   const rows: string[][] = [['0', '—', show(current), 'estado inicial + clausura-ε']]
 
-  for (let i = 0; i < word.length; i++) {
-    const sym = word[i]
-    if (!a.alphabet.includes(sym)) {
-      return {
-        accepted: false,
-        rows,
-        message: `El simbolo "${sym}" (posicion ${i + 1}) no pertenece al alfabeto Σ = {${a.alphabet.join(', ')}}.`,
-      }
-    }
+  // La cadena se parte en simbolos del alfabeto: con simbolos de varios
+  // caracteres no basta con recorrerla caracter a caracter.
+  const { tokens, error } = tokenizeWord(a.alphabet, word)
+  if (error) return { accepted: false, rows, message: error }
+
+  for (let i = 0; i < tokens.length; i++) {
+    const sym = tokens[i]
     const next = closure(current.flatMap((q) => move(a, q, sym)))
     rows.push([String(i + 1), sym, show(next), next.length === 0 ? 'no hay transicion: se rechaza' : ''])
     current = next

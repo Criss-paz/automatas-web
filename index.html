@@ -2,12 +2,57 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Simulador de Automatas Finitos - AFD / AFN</title>
-    <meta name="description" content="Resuelve, dibuja, convierte y minimiza automatas finitos AFD y AFN con procedimiento paso a paso." />
+    <!--
+      viewport-fit=cover evita la franja en blanco en los iPhone con muesca.
+      No se fija maximum-scale: hay que dejar que la persona amplíe la página.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0f1420" />
+
+    <title>Simulador de Autómatas Finitos · AFD / AFN</title>
+    <meta
+      name="description"
+      content="Resuelve, dibuja, convierte y minimiza autómatas finitos AFD y AFN con el procedimiento paso a paso. Funciona en el navegador, sin instalar nada."
+    />
+
+    <!-- Vista previa al compartir el enlace -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Simulador de Autómatas Finitos · AFD / AFN" />
+    <meta
+      property="og:description"
+      content="Escribe el enunciado, una expresión regular o la quíntupla, o dibuja el autómata: obtienes el AFD mínimo con todo el procedimiento explicado."
+    />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Icono en línea: no hace falta un archivo aparte ni una petición extra -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1420'/%3E%3Ccircle cx='23' cy='32' r='11' fill='none' stroke='%235aa9ff' stroke-width='3'/%3E%3Ccircle cx='46' cy='32' r='11' fill='none' stroke='%233ddc97' stroke-width='3'/%3E%3Ccircle cx='46' cy='32' r='7' fill='none' stroke='%233ddc97' stroke-width='2'/%3E%3C/svg%3E"
+    />
+    <meta name="apple-mobile-web-app-title" content="Autómatas" />
+
+    <noscript>
+      <style>
+        .noscript-warning {
+          margin: 40px auto; max-width: 620px; padding: 20px 24px; border-radius: 12px;
+          background: #1a2233; border: 1px solid #2c3854; color: #e8edf7;
+          font-family: system-ui, sans-serif; line-height: 1.6;
+        }
+      </style>
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div class="noscript-warning">
+        <h1>Hace falta JavaScript</h1>
+        <p>
+          Todos los cálculos de este simulador (construcción, determinización, minimización) ocurren dentro de tu
+          navegador, así que necesita JavaScript activado. Actívalo y vuelve a cargar la página.
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

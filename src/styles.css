@@ -262,9 +262,94 @@ body {
 
 .app-footer { text-align: center; color: var(--muted); font-size: 12.5px; padding-top: 24px; }
 
-@media (max-width: 800px) {
+/* ---------------- elementos nuevos del editor ---------------- */
+.import-area {
+  width: 100%; background: var(--bg-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 8px; padding: 11px 13px; font-family: var(--mono); font-size: 13px;
+  resize: vertical; margin-top: 8px;
+}
+.error-box {
+  margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+  background: rgba(255, 107, 107, .12); border: 1px solid rgba(255, 107, 107, .4); color: #ffb3b3;
+}
+.chip.danger { border-color: rgba(255, 107, 107, .45); color: #ffa0a0; }
+.chip.danger:hover { border-color: var(--bad); }
+.tool:disabled { opacity: .35; cursor: default; }
+.tool:disabled:hover { color: var(--muted); border-color: var(--line); }
+
+/*
+ * El lienzo del editor necesita touch-action: none, si no el navegador movil
+ * interpreta el arrastre como desplazamiento de la pagina y nunca llegan los
+ * eventos de movimiento. Solo se aplica al editor: en los diagramas de solo
+ * lectura la pagina debe poder desplazarse con el dedo encima.
+ */
+.canvas-wrap .automaton-svg { touch-action: none; }
+
+/* Que nada desborde horizontalmente en pantallas estrechas. */
+html, body { overflow-x: hidden; }
+.panel, .section, .step-card { min-width: 0; }
+pre, code { overflow-wrap: anywhere; }
+
+/* ---------------- adaptación a pantallas pequeñas ---------------- */
+@media (max-width: 900px) {
   .words-grid, .compare-grid { grid-template-columns: 1fr; }
-  .app-header { flex-direction: column; align-items: flex-start; }
+  .app { padding: 0 14px 48px; }
+  .app-header { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px 0 14px; }
+  .main-nav { width: 100%; overflow-x: auto; }
+  .main-nav button { white-space: nowrap; }
+  .panel { padding: 16px 15px; }
+}
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  .app { padding: 0 10px 40px; }
+  .app-header h1 { font-size: 18px; }
+  .app-header p { font-size: 12px; }
+  .panel { padding: 14px 12px; border-radius: 10px; }
+  .panel h2 { font-size: 17px; }
+
+  /* Los controles pasan a ser cuadrados grandes: el dedo necesita 44px. */
+  .toolbar { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+  .tool {
+    flex-direction: column; gap: 3px; padding: 9px 4px; justify-content: center;
+    min-height: 52px; font-size: 11.5px; text-align: center;
+  }
+  .tool-icon { font-size: 17px; }
+  .tool-label { line-height: 1.1; }
+
+  .btn { padding: 12px 16px; width: 100%; text-align: center; }
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions .hint-inline { text-align: center; }
+
+  .chip { padding: 8px 13px; font-size: 13px; }
+  .symbol-input { width: 100%; }
+  .rename-row { flex-wrap: wrap; }
+  .rename-row input { max-width: none; flex: 1 1 140px; }
+  .tester-input { max-width: none; }
+
+  /* El diagrama ocupa el ancho completo y se puede ampliar tocando. */
+  .canvas-wrap { border-radius: 8px; }
+  .section-body { padding: 4px 11px 14px; }
+  .step-card { padding-left: 12px; }
+  .step-table th, .step-table td { padding: 5px 8px; font-size: 11.5px; }
+  .ident-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 400px) {
+  .ident-grid { grid-template-columns: 1fr; }
+  .toolbar { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Pantallas táctiles: objetivos más grandes y sin efectos de hover pegajosos. */
+@media (hover: none) {
+  .edge .edge-hit { stroke-width: 22; }
+  .tool:hover, .chip:hover, .btn:hover { border-color: var(--line); }
+  .tool.active { border-color: var(--accent); }
+}
+
+/* Respeta a quien pide menos animación en su sistema. */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
 /* ---------------- impresión / PDF ---------------- */

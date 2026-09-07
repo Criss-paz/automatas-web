@@ -11,12 +11,16 @@ export interface AutomatonViewProps {
   selectedState?: string | null
   selectedTransition?: string | null
   highlightStates?: string[]
-  onStateMouseDown?: (id: string, e: React.MouseEvent) => void
-  onStateClick?: (id: string, e: React.MouseEvent) => void
-  onTransitionClick?: (id: string, e: React.MouseEvent) => void
-  onCanvasMouseDown?: (x: number, y: number, e: React.MouseEvent) => void
-  onCanvasMouseMove?: (x: number, y: number, e: React.MouseEvent) => void
-  onCanvasMouseUp?: (x: number, y: number, e: React.MouseEvent) => void
+  /**
+   * Se usan eventos de PUNTERO, no de raton: asi el mismo codigo sirve para
+   * raton, dedo y lapiz, que es lo que hace falta en telefonos y tablets.
+   */
+  onStateMouseDown?: (id: string, e: React.PointerEvent) => void
+  onStateClick?: (id: string, e: React.PointerEvent) => void
+  onTransitionClick?: (id: string, e: React.PointerEvent) => void
+  onCanvasMouseDown?: (x: number, y: number, e: React.PointerEvent) => void
+  onCanvasMouseMove?: (x: number, y: number, e: React.PointerEvent) => void
+  onCanvasMouseUp?: (x: number, y: number, e: React.PointerEvent) => void
   /** Linea temporal mientras se dibuja una flecha. */
   pendingArrow?: { x1: number; y1: number; x2: number; y2: number } | null
   minHeight?: number
@@ -75,7 +79,7 @@ export default function AutomatonView(props: AutomatonViewProps) {
   const width = props.fixedWidth ?? auto.width
   const height = props.fixedHeight ?? auto.height
 
-  const toLocal = (e: React.MouseEvent): { x: number; y: number } => {
+  const toLocal = (e: React.PointerEvent): { x: number; y: number } => {
     const svg = svgRef.current
     if (!svg) return { x: 0, y: 0 }
     const rect = svg.getBoundingClientRect()
@@ -94,14 +98,16 @@ export default function AutomatonView(props: AutomatonViewProps) {
     const label = g.labels.join(', ')
     const isSel = g.ids.some((id) => id === selectedTransition)
     const cls = 'edge' + (isSel ? ' edge-selected' : '')
-    const onClick = props.onTransitionClick ? (e: React.MouseEvent) => props.onTransitionClick!(g.ids[0], e) : undefined
+    const onClick = props.onTransitionClick
+      ? (e: React.PointerEvent) => props.onTransitionClick!(g.ids[0], e)
+      : undefined
 
     // --- bucle sobre si mismo ---
     if (g.from === g.to) {
       const d = `M ${from.x - 13} ${from.y - R + 3}
                  C ${from.x - 46} ${from.y - R - 52}, ${from.x + 46} ${from.y - R - 52}, ${from.x + 13} ${from.y - R + 3}`
       return (
-        <g key={g.key} className={cls} onClick={onClick}>
+        <g key={g.key} className={cls} onPointerUp={onClick}>
           <path d={d} fill="none" markerEnd="url(#arrow)" />
           <path d={d} fill="none" className="edge-hit" />
           <text x={from.x} y={from.y - R - 40} textAnchor="middle" className="edge-label">
@@ -139,7 +145,7 @@ export default function AutomatonView(props: AutomatonViewProps) {
     const ly = bend ? (from.y + to.y) / 2 + ny * (bend * 0.75) : (from.y + to.y) / 2 + ny * 14
 
     return (
-      <g key={g.key} className={cls} onClick={onClick}>
+      <g key={g.key} className={cls} onPointerUp={onClick}>
         <path d={d} fill="none" markerEnd="url(#arrow)" />
         <path d={d} fill="none" className="edge-hit" />
         <text x={lx} y={ly - 6} textAnchor="middle" className="edge-label">
@@ -155,15 +161,21 @@ export default function AutomatonView(props: AutomatonViewProps) {
       className={'automaton-svg ' + (className ?? '')}
       viewBox={`0 0 ${width} ${Math.max(height, minHeight)}`}
       style={{ width: '100%', height: 'auto', maxHeight: `${Math.max(height, minHeight) * scale}px` }}
-      onMouseDown={(e) => {
+      onPointerDown={(e) => {
+        // Capturar el puntero mantiene el arrastre aunque el dedo salga del SVG.
+        if (props.onCanvasMouseDown) e.currentTarget.setPointerCapture?.(e.pointerId)
         const p = toLocal(e)
         props.onCanvasMouseDown?.(p.x, p.y, e)
       }}
-      onMouseMove={(e) => {
+      onPointerMove={(e) => {
         const p = toLocal(e)
         props.onCanvasMouseMove?.(p.x, p.y, e)
       }}
-      onMouseUp={(e) => {
+      onPointerUp={(e) => {
+        const p = toLocal(e)
+        props.onCanvasMouseUp?.(p.x, p.y, e)
+      }}
+      onPointerCancel={(e) => {
         const p = toLocal(e)
         props.onCanvasMouseUp?.(p.x, p.y, e)
       }}
@@ -194,8 +206,8 @@ export default function AutomatonView(props: AutomatonViewProps) {
           <g
             key={s.id}
             className={'state' + (sel ? ' state-selected' : '') + (hi ? ' state-highlight' : '')}
-            onMouseDown={(e) => props.onStateMouseDown?.(s.id, e)}
-            onClick={(e) => props.onStateClick?.(s.id, e)}
+            onPointerDown={(e) => props.onStateMouseDown?.(s.id, e)}
+            onPointerUp={(e) => props.onStateClick?.(s.id, e)}
           >
             {s.isInitial && (
               <g className="initial-marker">

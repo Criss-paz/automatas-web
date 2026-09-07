@@ -276,3 +276,78 @@ export function cloneAutomaton(a: Automaton, name?: string): Automaton {
     transitions: a.transitions.map((t) => ({ ...t })),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Alfabetos con simbolos de mas de un caracter
+// ---------------------------------------------------------------------------
+
+/**
+ * Un alfabeto es "simple" si todos sus simbolos ocupan un solo caracter. En ese
+ * caso una cadena se lee caracter a caracter, que es el caso habitual (a, b, 0, 1).
+ */
+export function isSimpleAlphabet(alphabet: string[]): boolean {
+  return alphabet.every((s) => [...s].length === 1)
+}
+
+/**
+ * Une una lista de simbolos en una cadena legible. Con simbolos de varios
+ * caracteres hace falta un separador para que la cadena se pueda volver a leer:
+ * "id num id" en vez de "idnumid".
+ */
+export function joinWord(alphabet: string[], symbols: string[]): string {
+  return symbols.join(isSimpleAlphabet(alphabet) ? '' : ' ')
+}
+
+export interface TokenizeResult {
+  tokens: string[]
+  /** Mensaje de error si la cadena no se pudo leer con este alfabeto. */
+  error?: string
+}
+
+/**
+ * Parte una cadena en simbolos del alfabeto.
+ *
+ * Con alfabeto simple es partir por caracteres. Con simbolos largos se toma
+ * siempre el simbolo mas largo que encaje (maximal munch) y se permiten
+ * espacios o comas como separadores explicitos, que es como se escriben estas
+ * cadenas a mano.
+ */
+export function tokenizeWord(alphabet: string[], word: string): TokenizeResult {
+  if (word === '') return { tokens: [] }
+
+  if (isSimpleAlphabet(alphabet)) {
+    const tokens = [...word]
+    const bad = tokens.findIndex((c) => !alphabet.includes(c))
+    if (bad >= 0) {
+      return {
+        tokens: tokens.slice(0, bad),
+        error: `El simbolo "${tokens[bad]}" (posicion ${bad + 1}) no pertenece al alfabeto Σ = {${alphabet.join(', ')}}.`,
+      }
+    }
+    return { tokens }
+  }
+
+  // Los mas largos primero: asi "ab" gana sobre "a" cuando ambos existen.
+  const sorted = [...alphabet].sort((x, y) => y.length - x.length)
+  const tokens: string[] = []
+  let i = 0
+  while (i < word.length) {
+    if (/[\s,;]/.test(word[i])) {
+      i++
+      continue
+    }
+    const hit = sorted.find((s) => word.startsWith(s, i))
+    if (!hit) {
+      return {
+        tokens,
+        error:
+          `No se pudo leer la cadena a partir de la posicion ${i + 1} ("${word.slice(i, i + 8)}"). ` +
+          `El alfabeto es Σ = {${alphabet.join(', ')}}; como tiene simbolos de varios caracteres, ` +
+          `puedes separarlos con espacios.`,
+      }
+    }
+    tokens.push(hit)
+    i += hit.length
+  }
+  return { tokens }
+}

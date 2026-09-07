@@ -119,6 +119,12 @@ export function thompson(node: RegexNode): { automaton: Automaton; steps: Step[]
         })
         return { start: s, accept: f }
       }
+      default:
+        // {n,m} se expande antes, y ~ ∩ − se resuelven con operaciones sobre
+        // AFD (ver regex/build.ts): Thompson solo ve los operadores clasicos.
+        throw new Error(
+          `El operador "${n.type}" no se construye con Thompson; debe resolverse antes en regex/build.ts.`,
+        )
     }
   }
 

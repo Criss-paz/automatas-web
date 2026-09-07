@@ -1,5 +1,6 @@
 import { Automaton } from './types'
 import { accepts } from './algorithms/equivalence'
+import { joinWord } from './automaton'
 
 /**
  * Genera cadenas de ejemplo recorriendo Σ* en orden de longitud creciente
@@ -16,17 +17,19 @@ export function sampleWords(
 
   const acc: string[] = []
   const rej: string[] = []
-  let words: string[] = ['']
+  // Listas de simbolos, no cadenas: el alfabeto puede tener simbolos largos.
+  let words: string[][] = [[]]
   let generated = 0
 
   for (let len = 0; len <= maxLen; len++) {
     if (len > 0) {
-      const next: string[] = []
-      for (const w of words) for (const s of alphabet) next.push(w + s)
+      const next: string[][] = []
+      for (const w of words) for (const s of alphabet) next.push([...w, s])
       words = next
     }
     if (words.length === 0 || generated > 20000) break
-    for (const w of words) {
+    for (const syms of words) {
+      const w = joinWord(alphabet, syms)
       generated++
       if (accepts(a, w)) {
         if (acc.length < wantA) acc.push(w)

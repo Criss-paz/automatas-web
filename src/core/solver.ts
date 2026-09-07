@@ -7,8 +7,8 @@ import {
   isDeterministic,
   transitionTable,
 } from './automaton'
-import { parseRegex, alphabetOf, regexToString, RegexError } from './regex/parser'
-import { thompson } from './regex/thompson'
+import { parseRegex, alphabetOf, regexToString, RegexError, splitAlphabetDeclaration } from './regex/parser'
+import { buildFromRegex } from './regex/build'
 import { parseStatement } from './nl/parser'
 import { parseFormal } from './formal'
 import { subsetConstruction } from './algorithms/subset'
@@ -86,22 +86,30 @@ export function solve(input: string, mode: InputMode): SolveResult {
 
   try {
     if (mode === 'regex') {
-      const ast = parseRegex(input)
-      const alpha = alphabetOf(ast)
+      const { alphabet: declared, expression } = splitAlphabetDeclaration(input)
+      const ast = parseRegex(expression, { alphabet: declared })
+      const alpha = [...new Set([...(declared ?? []), ...alphabetOf(ast)])].sort()
       if (alpha.length === 0) return fail('La expresion regular no usa ningun simbolo del alfabeto.')
       interpretation.push(`Expresion regular interpretada: **${regexToString(ast)}**`)
-      interpretation.push(`Alfabeto deducido: Σ = {${alpha.join(', ')}}`)
-      const th = thompson(ast)
-      initial = th.automaton
+      interpretation.push(
+        declared ? `Alfabeto declarado: Σ = {${alpha.join(', ')}}` : `Alfabeto deducido: Σ = {${alpha.join(', ')}}`,
+      )
+
+      const built = buildFromRegex(ast, alpha)
+      initial = built.automaton
       buildSteps.push({
-        title: 'Construccion de Thompson',
-        body:
-          `Cada operador de la expresion regular se traduce en un fragmento de automata con una entrada y una salida, ` +
-          `unidos con transiciones ${'ε'}. El resultado es un AFN-ε que reconoce exactamente el lenguaje de la expresion.`,
+        title: built.usedBooleanOps ? 'Construccion del automata' : 'Construccion de Thompson',
+        body: built.usedBooleanOps
+          ? `Las partes con operadores clasicos (| · * + ?) se construyen con **Thompson**: cada operador es un ` +
+            `fragmento con una entrada y una salida unidos por transiciones ε. Los operadores **~ (complemento), ` +
+            `&& (interseccion) y − (diferencia)** no se pueden expresar asi, de modo que en esos puntos se ` +
+            `determiniza y se aplica la operacion booleana correspondiente.`
+          : `Cada operador de la expresion regular se traduce en un fragmento de automata con una entrada y una salida, ` +
+            `unidos con transiciones ${'ε'}. El resultado es un AFN-ε que reconoce exactamente el lenguaje de la expresion.`,
       })
-      buildSteps.push(...th.steps)
+      buildSteps.push(...built.steps)
       buildSteps.push({
-        title: 'AFN-ε obtenido',
+        title: `Automata obtenido (${typeOf(initial)})`,
         table: { caption: 'Tabla de transiciones', ...transitionTable(initial) },
         automaton: initial,
       })
@@ -122,12 +130,22 @@ export function solve(input: string, mode: InputMode): SolveResult {
       initial = res.automaton
       notes.push(...res.notes)
       interpretation.push(`Alfabeto reconocido: Σ = {${res.alphabet.join(', ')}}`)
+      if (res.clauses.length > 1) interpretation.push(`Lectura logica del enunciado: **${res.structure}**`)
       for (const c of res.clauses) interpretation.push(`Condicion detectada: "${c.text}" → **${c.reading}**`)
+
+      // Como se combinan las condiciones depende de los conectores del enunciado.
+      const combinacion =
+        res.combination === 'union'
+          ? `Despues se combinan por **union** (construccion del producto), porque el enunciado usa "o": basta con cumplir una.`
+          : res.combination === 'mixta'
+            ? `El enunciado mezcla "y" con "o", asi que se leyo como **${res.structure}**: primero se intersecan las condiciones unidas por "y" y luego se unen los grupos separados por "o".`
+            : res.combination === 'interseccion'
+              ? `Despues se combinan por **interseccion** (construccion del producto), porque la cadena debe cumplirlas todas a la vez.`
+              : `El enunciado tiene una sola condicion, asi que su automata es directamente el resultado de este paso.`
+
       buildSteps.push({
         title: 'Condiciones reconocidas en el enunciado',
-        body:
-          `Cada condicion del enunciado se convierte en un automata propio. ` +
-          `Despues se combinan por **interseccion** (construccion del producto), porque la cadena debe cumplirlas todas a la vez.`,
+        body: `Cada condicion del enunciado se convierte en un automata propio. ${combinacion}`,
         table: {
           caption: 'Condiciones detectadas',
           headers: ['Fragmento del enunciado', 'Interpretacion', 'Estados'],
@@ -137,16 +155,24 @@ export function solve(input: string, mode: InputMode): SolveResult {
       for (const c of res.clauses) {
         buildSteps.push({
           title: `Automata de la condicion: ${c.reading}`,
+          body: c.negated
+            ? `La condicion esta negada, asi que se completa el AFD con estado trampa y se intercambian los estados finales con los no finales (**complemento**).`
+            : undefined,
           table: { caption: 'Tabla de transiciones', ...transitionTable(c.automaton) },
           automaton: c.automaton,
         })
       }
       if (res.clauses.length > 1) {
+        const esUnion = res.combination === 'union'
         buildSteps.push({
-          title: 'Interseccion de las condiciones',
+          title: esUnion ? 'Union de las condiciones' : 'Combinacion de las condiciones',
           body:
             `Se construye el automata producto: sus estados son pares (o tuplas) de estados de los automatas de cada condicion, ` +
-            `y un estado es final solo si lo es en **todas** las condiciones.`,
+            (esUnion
+              ? `y un estado es final si lo es en **alguna** de las condiciones.`
+              : res.combination === 'mixta'
+                ? `final si lo es en todas las condiciones de un mismo grupo "y", y basta con que lo sea en alguno de los grupos unidos por "o".`
+                : `y un estado es final solo si lo es en **todas** las condiciones.`),
           table: { caption: 'Tabla de transiciones del automata combinado', ...transitionTable(initial) },
           automaton: initial,
         })

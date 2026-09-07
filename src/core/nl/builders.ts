@@ -1,6 +1,11 @@
 import { Automaton, State, Transition } from '../types'
-import { uid, initialState, move } from '../automaton'
+import { uid } from '../automaton'
 import { autoLayout } from '../layout'
+import { complement, product } from '../algorithms/boolean'
+
+// Las operaciones booleanas viven en algorithms/boolean.ts porque tambien las
+// usan el motor de expresiones regulares y la verificacion de equivalencia.
+export { complement, product }
 
 /**
  * Constructores de AFD basicos y operaciones booleanas entre ellos.
@@ -151,80 +156,157 @@ export function divisibleBy(alphabet: string[], k: number): Automaton {
   return dfa(`multiplo de ${k} en base ${base}`, alphabet, k, labels, [0], (i, sym) => (i * base + digit.get(sym)!) % k)
 }
 
-/** Complemento de un AFD COMPLETO: se invierten los estados finales. */
-export function complement(a: Automaton, name?: string): Automaton {
-  return {
-    ...a,
-    name: name ?? `complemento de ${a.name}`,
-    states: a.states.map((s) => ({ ...s, isFinal: !s.isFinal })),
-    transitions: a.transitions.map((t) => ({ ...t })),
-  }
+// ---------------------------------------------------------------------------
+// Constructores adicionales
+// ---------------------------------------------------------------------------
+
+/** Lenguaje vacio: no acepta ninguna cadena (ni siquiera ε). */
+export function emptyLanguage(alphabet: string[]): Automaton {
+  return dfa('∅ (no acepta nada)', alphabet, 1, ['T'], [], () => 0)
+}
+
+/** Lenguaje que acepta EXACTAMENTE la cadena w (y ninguna otra). */
+export function exactWord(alphabet: string[], w: string): Automaton {
+  const n = w.length + 1
+  const trap = n
+  const labels = [...Array.from({ length: n }, (_, i) => `w${i}`), 'T']
+  return dfa(`solo la cadena "${w === '' ? 'ε' : w}"`, alphabet, n + 1, labels, [n - 1], (i, sym) => {
+    if (i === trap || i === n - 1) return trap
+    return sym === w[i] ? i + 1 : trap
+  })
 }
 
 /**
- * Producto de dos AFD completos.
- * mode 'and' -> interseccion (final si ambos lo son)
- * mode 'or'  -> union        (final si alguno lo es)
- * Solo se generan los pares alcanzables.
+ * Lenguaje FINITO formado por la lista de palabras dada.
+ * Se construye el trie (arbol de prefijos) de las palabras y se completa con
+ * un estado trampa: es directamente el AFD del lenguaje.
  */
-export function product(a: Automaton, b: Automaton, mode: 'and' | 'or', name?: string): Automaton {
-  const alphabet = [...new Set([...a.alphabet, ...b.alphabet])].sort()
-  const ia = initialState(a)
-  const ib = initialState(b)
-  if (!ia || !ib) return a
+export function oneOfWords(alphabet: string[], words: string[]): Automaton {
+  const uniq = [...new Set(words)]
+  if (uniq.length === 0) return emptyLanguage(alphabet)
+  if (uniq.length === 1) return exactWord(alphabet, uniq[0])
 
-  const finA = (id: string) => !!a.states.find((s) => s.id === id)?.isFinal
-  const finB = (id: string) => !!b.states.find((s) => s.id === id)?.isFinal
-  const labA = (id: string) => a.states.find((s) => s.id === id)!.label
-  const labB = (id: string) => b.states.find((s) => s.id === id)!.label
+  interface Node { children: Map<string, number>; final: boolean }
+  const nodes: Node[] = [{ children: new Map(), final: false }]
+  for (const w of uniq) {
+    let cur = 0
+    for (const ch of w) {
+      let nx = nodes[cur].children.get(ch)
+      if (nx === undefined) {
+        nodes.push({ children: new Map(), final: false })
+        nx = nodes.length - 1
+        nodes[cur].children.set(ch, nx)
+      }
+      cur = nx
+    }
+    nodes[cur].final = true
+  }
 
-  const states: State[] = []
+  const trap = nodes.length
+  const labels = [...nodes.map((_, i) => `t${i}`), 'T']
+  const finals = nodes.map((nd, i) => (nd.final ? i : -1)).filter((i) => i >= 0)
+  const show = uniq.map((w) => (w === '' ? 'ε' : w)).join(', ')
+  return dfa(`solo las cadenas {${show}}`, alphabet, nodes.length + 1, labels, finals, (i, sym) =>
+    i === trap ? trap : nodes[i].children.get(sym) ?? trap,
+  )
+}
+
+/** Cadenas formadas UNICAMENTE con simbolos del subconjunto dado. */
+export function onlySymbols(alphabet: string[], allowed: string[]): Automaton {
+  const set = new Set(allowed)
+  return dfa(`solo simbolos de {${allowed.join(', ')}}`, alphabet, 2, ['A', 'T'], [0], (i, sym) =>
+    i === 1 || !set.has(sym) ? 1 : 0,
+  )
+}
+
+/**
+ * El k-esimo simbolo CONTANDO DESDE EL FINAL es "sym"
+ * (k = 1 ultimo, k = 2 penultimo, k = 3 antepenultimo...).
+ *
+ * Se construye como AFN a proposito: es el ejemplo clasico de automata donde el
+ * no determinismo "adivina" en que posicion empieza el sufijo, y su AFD
+ * equivalente necesita 2^k estados. El solucionador lo determiniza despues.
+ */
+export function symbolFromEnd(alphabet: string[], sym: string, k: number): Automaton {
+  const states: State[] = Array.from({ length: k + 1 }, (_, i) => ({
+    id: uid('n'),
+    label: `s${i}`,
+    x: 0,
+    y: 0,
+    isInitial: i === 0,
+    isFinal: i === k,
+  }))
   const transitions: Transition[] = []
-  const index = new Map<string, State>()
-
-  const getState = (p: string, q: string): State => {
-    const k = `${p}|${q}`
-    let s = index.get(k)
-    if (!s) {
-      s = {
-        id: uid('pr'),
-        label: `(${labA(p)},${labB(q)})`,
-        x: 0,
-        y: 0,
-        isInitial: states.length === 0,
-        isFinal: mode === 'and' ? finA(p) && finB(q) : finA(p) || finB(q),
-      }
-      index.set(k, s)
-      states.push(s)
-    }
-    return s
+  // El estado inicial consume cualquier prefijo.
+  for (const s of alphabet) {
+    transitions.push({ id: uid('t'), from: states[0].id, to: states[0].id, symbol: s })
   }
-
-  const queue: Array<[string, string]> = [[ia.id, ib.id]]
-  getState(ia.id, ib.id)
-  const visited = new Set<string>([`${ia.id}|${ib.id}`])
-
-  while (queue.length) {
-    const [p, q] = queue.shift()!
-    const from = getState(p, q)
-    for (const sym of alphabet) {
-      const np = move(a, p, sym)[0]
-      const nq = move(b, q, sym)[0]
-      if (np === undefined || nq === undefined) continue // AFD incompleto: se ignora
-      const to = getState(np, nq)
-      transitions.push({ id: uid('t'), from: from.id, to: to.id, symbol: sym })
-      const k = `${np}|${nq}`
-      if (!visited.has(k)) {
-        visited.add(k)
-        queue.push([np, nq])
-      }
+  // "Adivina" que aqui empieza el sufijo de longitud k.
+  transitions.push({ id: uid('t'), from: states[0].id, to: states[1].id, symbol: sym })
+  // Los k-1 simbolos restantes pueden ser cualquiera.
+  for (let i = 1; i < k; i++) {
+    for (const s of alphabet) {
+      transitions.push({ id: uid('t'), from: states[i].id, to: states[i + 1].id, symbol: s })
     }
   }
+  const orden = k === 1 ? 'ultimo' : k === 2 ? 'penultimo' : k === 3 ? 'antepenultimo' : `${k}º desde el final`
+  return autoLayout({ name: `el ${orden} simbolo es "${sym}"`, alphabet, states, transitions })
+}
 
-  return autoLayout({
-    name: name ?? `${a.name} ${mode === 'and' ? '∩' : '∪'} ${b.name}`,
-    alphabet,
-    states,
-    transitions,
+/** El k-esimo simbolo contando DESDE EL INICIO (k = 1 el primero) es "sym". */
+export function symbolFromStart(alphabet: string[], sym: string, k: number): Automaton {
+  const acc = k
+  const trap = k + 1
+  const labels = [...Array.from({ length: k }, (_, i) => `p${i}`), 'A', 'T']
+  return dfa(`el simbolo ${k}º es "${sym}"`, alphabet, k + 2, labels, [acc], (i, s) => {
+    if (i === acc) return acc
+    if (i === trap) return trap
+    if (i < k - 1) return i + 1
+    return s === sym ? acc : trap
   })
+}
+
+/** Cadenas con a lo sumo n apariciones de "sym". */
+export function countAtMost(alphabet: string[], sym: string, n: number): Automaton {
+  const labels = [...Array.from({ length: n + 1 }, (_, i) => `${sym}${i}`), 'T']
+  return dfa(
+    `a lo sumo ${n} "${sym}"`,
+    alphabet,
+    n + 2,
+    labels,
+    Array.from({ length: n + 1 }, (_, i) => i),
+    (i, s) => (i === n + 1 ? n + 1 : s === sym ? i + 1 : i),
+  )
+}
+
+/** Cadenas de longitud entre lo y hi (ambos inclusive). */
+export function lengthBetween(alphabet: string[], lo: number, hi: number): Automaton {
+  const labels = [...Array.from({ length: hi + 1 }, (_, i) => `L${i}`), 'T']
+  const finals: number[] = []
+  for (let i = lo; i <= hi; i++) finals.push(i)
+  return dfa(`longitud entre ${lo} y ${hi}`, alphabet, hi + 2, labels, finals, (i) => Math.min(i + 1, hi + 1))
+}
+
+/** Cadenas sin dos simbolos iguales consecutivos (simbolos alternados). */
+export function noRepeatedAdjacent(alphabet: string[]): Automaton {
+  const n = alphabet.length + 2 // inicial + uno por simbolo + trampa
+  const trap = n - 1
+  const labels = ['q0', ...alphabet.map((s) => `q${s}`), 'T']
+  const finals = Array.from({ length: alphabet.length + 1 }, (_, i) => i)
+  return dfa('sin simbolos iguales consecutivos', alphabet, n, labels, finals, (i, sym) => {
+    if (i === trap) return trap
+    const idx = alphabet.indexOf(sym) + 1
+    if (i === 0) return idx // primer simbolo: siempre se puede
+    return i === idx ? trap : idx // repetir el mismo simbolo es lo prohibido
+  })
+}
+
+/** Cadenas que empiezan y terminan con el MISMO simbolo (union sobre Σ). */
+export function startsAndEndsSame(alphabet: string[]): Automaton {
+  let acc: Automaton | null = null
+  for (const s of alphabet) {
+    const both = product(startsWith(alphabet, s), endsWith(alphabet, s), 'and', `empieza y termina con "${s}"`)
+    acc = acc === null ? both : product(acc, both, 'or')
+  }
+  return acc === null ? anyString(alphabet) : { ...acc, name: 'empieza y termina con el mismo simbolo' }
 }
