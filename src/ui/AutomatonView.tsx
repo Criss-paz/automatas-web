@@ -162,8 +162,9 @@ export default function AutomatonView(props: AutomatonViewProps) {
       viewBox={`0 0 ${width} ${Math.max(height, minHeight)}`}
       style={{ width: '100%', height: 'auto', maxHeight: `${Math.max(height, minHeight) * scale}px` }}
       onPointerDown={(e) => {
-        // Capturar el puntero mantiene el arrastre aunque el dedo salga del SVG.
-        if (props.onCanvasMouseDown) e.currentTarget.setPointerCapture?.(e.pointerId)
+        // Solo el lienzo vacio captura el puntero; los estados necesitan recibir
+        // su propio pointerup para completar las herramientas por toques.
+        if (props.onCanvasMouseDown && e.target === e.currentTarget) e.currentTarget.setPointerCapture?.(e.pointerId)
         const p = toLocal(e)
         props.onCanvasMouseDown?.(p.x, p.y, e)
       }}

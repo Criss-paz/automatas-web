@@ -156,7 +156,10 @@ body {
 }
 
 /* ---------------- SVG del autómata ---------------- */
-.automaton-svg { display: block; background: #0c111c; border-radius: 8px; user-select: none; }
+.automaton-svg {
+  display: block; width: 100%; background: #0c111c; border-radius: 8px;
+  user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+}
 .state-circle { fill: var(--panel-2); stroke: var(--accent); stroke-width: 2; }
 .state-inner { fill: none; }
 .state-label { fill: var(--text); font-size: 14px; font-family: var(--mono); pointer-events: none; }
@@ -283,7 +286,7 @@ body {
  * eventos de movimiento. Solo se aplica al editor: en los diagramas de solo
  * lectura la pagina debe poder desplazarse con el dedo encima.
  */
-.canvas-wrap .automaton-svg { touch-action: none; }
+.canvas-wrap .automaton-svg { touch-action: none; overscroll-behavior: contain; }
 
 /* Que nada desborde horizontalmente en pantallas estrechas. */
 html, body { overflow-x: hidden; }
