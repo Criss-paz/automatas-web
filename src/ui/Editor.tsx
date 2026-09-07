@@ -227,7 +227,10 @@ export default function Editor() {
   }
 
   const onStateMouseDown = (id: string, e: React.PointerEvent) => {
-    if (tool !== 'select') return
+    if (tool !== 'select') {
+      onStateClick(id)
+      return
+    }
     const s = a.states.find((q) => q.id === id)
     if (!s) return
     const svg = (e.currentTarget as SVGGElement).ownerSVGElement

@@ -208,8 +208,8 @@ export default function AutomatonView(props: AutomatonViewProps) {
             key={s.id}
             className={'state' + (sel ? ' state-selected' : '') + (hi ? ' state-highlight' : '')}
             onPointerDown={(e) => props.onStateMouseDown?.(s.id, e)}
-            onPointerUp={(e) => props.onStateClick?.(s.id, e)}
           >
+            <circle cx={s.x} cy={s.y} r={R + 13} className="state-hit" />
             {s.isInitial && (
               <g className="initial-marker">
                 <line x1={s.x - R - 34} y1={s.y} x2={s.x - R - 4} y2={s.y} markerEnd="url(#arrow)" />

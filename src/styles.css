@@ -160,6 +160,7 @@ body {
   display: block; width: 100%; background: #0c111c; border-radius: 8px;
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
 }
+.state-hit { fill: transparent; pointer-events: all; }
 .state-circle { fill: var(--panel-2); stroke: var(--accent); stroke-width: 2; }
 .state-inner { fill: none; }
 .state-label { fill: var(--text); font-size: 14px; font-family: var(--mono); pointer-events: none; }
@@ -331,7 +332,8 @@ pre, code { overflow-wrap: anywhere; }
   .tester-input { max-width: none; }
 
   /* El diagrama ocupa el ancho completo y se puede ampliar tocando. */
-  .canvas-wrap { border-radius: 8px; }
+  .canvas-wrap { border-radius: 8px; overflow-x: auto; overscroll-behavior-x: contain; }
+  .canvas-wrap .automaton-svg { width: 760px !important; max-width: none; }
   .section-body { padding: 4px 11px 14px; }
   .step-card { padding-left: 12px; }
   .step-table th, .step-table td { padding: 5px 8px; font-size: 11.5px; }
