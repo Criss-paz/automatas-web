@@ -429,6 +429,27 @@ const PATTERNS: Pattern[] = [
       }
     },
   },
+  {
+    id: 'ordinal-desde-final',
+    re: rx(
+      '\\b(?:el\\s+|la\\s+)?(primer[ao]?|segund[ao]|tercer[ao]?|cuart[ao]|quint[ao]|sext[ao]|septim[ao]|octav[ao]|noven[ao]|decim[ao])\\s+' +
+        '(?:simbolo|caracter|letra|digito|elemento|posicion)\\s+' +
+        '(?:contando\\s+)?(?:desde|de|a\\s+partir\\s+de|empezando\\s+por)\\s+(?:el\\s+|la\\s+)?(?:final|derecha|atras|ultimo)\\s*' +
+        '(?:sea|es|debe\\s+ser|:) ?\\s*' +
+        ART +
+        KIND +
+        S,
+      ),
+    words: [2],
+    build: (m, alpha) => {
+      const k = ORD_START[m[1]] ?? ORD_START[m[1] + 'o']
+      if (!k) return null
+      return {
+        automaton: k === 1 ? B.endsWith(alpha, m[2]) : B.symbolFromEnd(alpha, m[2], k),
+        reading: `el simbolo ${k}º contando desde el final es "${m[2]}"`,
+      }
+    },
+  },
 
   // --- posicion contando desde el INICIO ----------------------------------
   {
@@ -537,6 +558,7 @@ const PATTERNS: Pattern[] = [
     re: rx(
       '\\b(?:formad\\w+|compuest\\w+|constituid\\w+|consten|conste|constan|hech\\w+|integrad\\w+)\\s+' +
         '(?:solo\\s+|unicamente\\s+|solamente\\s+|exclusivamente\\s+|nada\\s+mas\\s+)?(?:por|de|con)\\s+' +
+        '(?:solo\\s+|unicamente\\s+|solamente\\s+|exclusivamente\\s+|nada\\s+mas\\s+)?' +
         ART +
         KIND +
         '(' +
@@ -588,6 +610,12 @@ const PATTERNS: Pattern[] = [
         reading: words.length === 1 ? `acepta unicamente la cadena ${show}` : `acepta unicamente las cadenas ${show}`,
       }
     },
+  },
+  {
+    id: 'solo-simbolo',
+    re: rx('\\b(?:solo|unicamente|solamente|exclusivamente|nada\\s+mas)\\s+' + S + '(?!\\w)'),
+    words: [1],
+    build: (m, alpha) => ({ automaton: B.onlySymbols(alpha, [m[1]]), reading: `formada solo por "${m[1]}"` }),
   },
   {
     id: 'solo-cadena-w',

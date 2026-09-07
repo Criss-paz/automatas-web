@@ -55,6 +55,14 @@ describe('lenguajes finitos: "acepta unicamente ..."', () => {
 })
 
 describe('posicion contando desde el final (el caso clasico de AFN)', () => {
+  it('reconoce la tercera posicion desde el final en una redaccion natural', () => {
+    check(
+      'Alfabeto {a, b}. Aceptamos las cadenas cuyo tercer simbolo desde el final es a',
+      ['aaa', 'aba', 'aab', 'abb', 'aaab'],
+      ['', 'a', 'aa', 'ba', 'bab', 'baa', 'bbb'],
+    )
+  })
+
   it('el penultimo simbolo es a', () => {
     check(
       'Cadenas sobre {a,b} donde el penultimo simbolo sea a',
@@ -174,6 +182,14 @@ describe('conteos y longitudes', () => {
 })
 
 describe('estructura logica del enunciado', () => {
+  it('combina cadenas formadas solo por un simbolo y la cadena vacia', () => {
+    check(
+      'Alfabeto {a, b}. Aceptamos las cadenas formadas por solo a (aa, aaa...), o solo b (bb...), o la cadena vacia',
+      ['', 'a', 'aa', 'aaa', 'b', 'bb', 'bbb'],
+      ['ab', 'ba', 'aba', 'aab', 'abb'],
+    )
+  })
+
   it('union con "o"', () => {
     const res = parseStatement('Cadenas sobre {a,b} que empiecen con a o terminen en b')
     expect(res.ok).toBe(true)
