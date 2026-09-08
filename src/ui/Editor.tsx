@@ -11,8 +11,6 @@ import StepsView, { Section } from './StepsView'
 import StringTester from './StringTester'
 import { parseFormal, toFormal, toJson } from '../core/formal'
 
-const W = 940
-const H = 520
 const STORAGE_KEY = 'automatas-web:lienzo:v1'
 /** Cuantos pasos de deshacer se guardan. */
 const MAX_HISTORY = 60
@@ -45,6 +43,35 @@ const TOOLS: Array<{ id: Tool; icon: string; label: string; hint: string; key: s
   { id: 'delete', icon: '✕', label: 'Borrar', key: 'x', hint: 'Toca un estado o una flecha para eliminarlo.' },
 ]
 
+/**
+ * Tamaño LOGICO del lienzo (el viewBox), segun el ancho de la ventana.
+ *
+ * En un telefono el lienzo se dibuja siempre al ancho completo de la pantalla,
+ * sin desplazamiento horizontal (que seria imposible de hacer con el dedo,
+ * porque el SVG usa touch-action: none para poder dibujar). Para que aun asi
+ * los estados salgan grandes y comodos de tocar, lo que se reduce es el sistema
+ * de coordenadas: menos unidades repartidas en el mismo ancho = todo mas grande.
+ */
+function useCanvasSize(): { W: number; H: number } {
+  const measure = () => {
+    const w = typeof window === 'undefined' ? 1200 : window.innerWidth
+    if (w < 560) return { W: 440, H: 380 }
+    if (w < 900) return { W: 680, H: 460 }
+    return { W: 940, H: 520 }
+  }
+  const [size, setSize] = useState(measure)
+  useEffect(() => {
+    const onResize = () => setSize(measure())
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [])
+  return size
+}
+
 const emptyDrawing = (name: string): Automaton => ({ name, alphabet: ['a', 'b'], states: [], transitions: [] })
 
 const freshAutos = (): Autos => ({ A: emptyDrawing('Autómata A'), B: emptyDrawing('Autómata B') })
@@ -63,6 +90,7 @@ function loadSaved(): Autos | null {
 }
 
 export default function Editor() {
+  const { W, H } = useCanvasSize()
   const [autos, setAutos] = useState<Autos>(() => loadSaved() ?? freshAutos())
   const [past, setPast] = useState<Autos[]>([])
   const [future, setFuture] = useState<Autos[]>([])
@@ -226,7 +254,7 @@ export default function Editor() {
     }
   }
 
-  const onStateMouseDown = (id: string, e: React.PointerEvent) => {
+  const onStateMouseDown = (id: string, x: number, y: number, e: React.PointerEvent) => {
     if (tool !== 'select') {
       onStateClick(id)
       return
@@ -234,12 +262,16 @@ export default function Editor() {
     const s = a.states.find((q) => q.id === id)
     if (!s) return
     const svg = (e.currentTarget as SVGGElement).ownerSVGElement
-    if (!svg) return
-    // Capturar el puntero en el SVG mantiene el arrastre aunque el dedo se salga.
-    svg.setPointerCapture?.(e.pointerId)
-    const rect = svg.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width) * W
-    const y = ((e.clientY - rect.top) / rect.height) * H
+    // Capturar el puntero mantiene el arrastre aunque el dedo se salga del SVG.
+    // Si el navegador se niega (algunos moviles lo hacen sobre elementos SVG),
+    // el arrastre debe seguir funcionando igual, asi que el fallo se ignora.
+    try {
+      svg?.setPointerCapture?.(e.pointerId)
+    } catch {
+      /* sin captura: el arrastre sigue vivo mientras el dedo no salga */
+    }
+    // Las coordenadas llegan ya convertidas por el propio lienzo: asi el
+    // desplazamiento se calcula con la misma formula que luego mueve el estado.
     drag.current = { id, dx: x - s.x, dy: y - s.y }
     // Con el puntero capturado el "click" ya no llega al estado, asi que la
     // seleccion se hace aqui mismo.

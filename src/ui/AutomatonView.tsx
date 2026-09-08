@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import { Automaton, EPSILON } from '../core/types'
 import { boundsOf } from '../core/layout'
 
@@ -15,7 +15,7 @@ export interface AutomatonViewProps {
    * Se usan eventos de PUNTERO, no de raton: asi el mismo codigo sirve para
    * raton, dedo y lapiz, que es lo que hace falta en telefonos y tablets.
    */
-  onStateMouseDown?: (id: string, e: React.PointerEvent) => void
+  onStateMouseDown?: (id: string, x: number, y: number, e: React.PointerEvent) => void
   onStateClick?: (id: string, e: React.PointerEvent) => void
   onTransitionClick?: (id: string, e: React.PointerEvent) => void
   onCanvasMouseDown?: (x: number, y: number, e: React.PointerEvent) => void
@@ -79,17 +79,57 @@ export default function AutomatonView(props: AutomatonViewProps) {
   const width = props.fixedWidth ?? auto.width
   const height = props.fixedHeight ?? auto.height
 
-  const toLocal = (e: React.PointerEvent): { x: number; y: number } => {
+  /**
+   * Pasa coordenadas de pantalla a coordenadas del viewBox.
+   *
+   * Se usa la matriz del propio SVG (getScreenCTM) porque es la unica forma
+   * correcta cuando la caja del elemento no guarda la misma proporcion que el
+   * viewBox: en ese caso preserveAspectRatio escala el dibujo y lo centra
+   * dejando bandas vacias, y una simple regla de tres sobre el rectangulo cae
+   * desplazada, con lo que el dedo "no acierta" donde se ve el estado.
+   *
+   * Si el navegador no ofrece la matriz se usa la regla de tres como respaldo.
+   */
+  const toLocal = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
     const svg = svgRef.current
     if (!svg) return { x: 0, y: 0 }
+    try {
+      const ctm = svg.getScreenCTM?.()
+      if (ctm) {
+        const pt = svg.createSVGPoint()
+        pt.x = e.clientX
+        pt.y = e.clientY
+        const p = pt.matrixTransform(ctm.inverse())
+        return { x: p.x, y: p.y }
+      }
+    } catch {
+      /* sin matriz: se usa el respaldo de abajo */
+    }
     const rect = svg.getBoundingClientRect()
-    const vbW = width
-    const vbH = Math.max(height, minHeight)
+    if (!rect.width || !rect.height) return { x: 0, y: 0 }
     return {
-      x: ((e.clientX - rect.left) / rect.width) * vbW,
-      y: ((e.clientY - rect.top) / rect.height) * vbH,
+      x: ((e.clientX - rect.left) / rect.width) * width,
+      y: ((e.clientY - rect.top) / rect.height) * Math.max(height, minHeight),
     }
   }
+
+  /**
+   * Red de seguridad para los navegadores moviles que ignoran touch-action en
+   * elementos SVG y se quedan el gesto para desplazar la pagina: cancelando el
+   * touchmove aqui, el arrastre con el dedo nunca se interrumpe.
+   *
+   * Solo se activa en el lienzo del editor (el unico que recibe
+   * onCanvasMouseMove); en los diagramas de solo lectura la pagina tiene que
+   * poder desplazarse con el dedo encima.
+   */
+  const interactive = !!props.onCanvasMouseMove
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg || !interactive) return
+    const stop = (ev: TouchEvent) => ev.preventDefault()
+    svg.addEventListener('touchmove', stop, { passive: false })
+    return () => svg.removeEventListener('touchmove', stop)
+  }, [interactive])
 
   const renderEdge = (g: EdgeGroup) => {
     const from = pos.get(g.from)
@@ -207,7 +247,10 @@ export default function AutomatonView(props: AutomatonViewProps) {
           <g
             key={s.id}
             className={'state' + (sel ? ' state-selected' : '') + (hi ? ' state-highlight' : '')}
-            onPointerDown={(e) => props.onStateMouseDown?.(s.id, e)}
+            onPointerDown={(e) => {
+              const p = toLocal(e)
+              props.onStateMouseDown?.(s.id, p.x, p.y, e)
+            }}
           >
             <circle cx={s.x} cy={s.y} r={R + 13} className="state-hit" />
             {s.isInitial && (

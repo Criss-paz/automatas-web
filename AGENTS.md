@@ -159,6 +159,22 @@ para que funcione igual con dedo, lápiz y ratón. Dos detalles frágiles:
 El historial de deshacer guarda instantáneas completas de `{A, B}`. Un arrastre
 se registra **una sola vez, al soltar** (en `onCanvasMouseUp`), no en cada píxel.
 
+**Nunca le des al lienzo un ancho mayor que la pantalla con desplazamiento
+horizontal.** Es la trampa en la que ya se cayó una vez: el SVG lleva
+`touch-action: none` para poder dibujar con el dedo, así que ese desplazamiento
+es imposible de hacer y la mitad del lienzo queda fuera de alcance en un
+teléfono, con toda la pinta de que "el táctil no funciona". Si hace falta que
+los estados se vean más grandes, reduce el **tamaño lógico** del viewBox
+(`useCanvasSize` en `Editor.tsx`), no el espacio en pantalla.
+
+Las coordenadas de pantalla se convierten a coordenadas del viewBox con
+`getScreenCTM().inverse()` en `AutomatonView.toLocal()`, no con una regla de tres
+sobre `getBoundingClientRect()`: si la caja del elemento no guarda la proporción
+del viewBox, `preserveAspectRatio` centra el dibujo y la regla de tres cae
+desplazada. Ese punto convertido se pasa a `onStateMouseDown`, para que el
+desplazamiento del arrastre se calcule con la misma fórmula que luego mueve el
+estado.
+
 ## 6. Pruebas
 
 | Archivo | Cubre |
@@ -169,10 +185,19 @@ se registra **una sola vez, al soltar** (en `onCanvasMouseUp`), no en cada píxe
 | `core/formal.test.ts` | Cada estilo de transición, tablas, JSON, ida y vuelta |
 | `core/random.test.ts` | Propiedades sobre autómatas generados al azar |
 | `ui/render.test.tsx` | Humo: que los componentes pinten sin excepciones |
+| `ui/editor-touch.test.tsx` | Interacción táctil real del lienzo (jsdom) |
 
 **Estilo de prueba preferido: comprobar el lenguaje, no la estructura.** Un
 autómata correcto puede tener cualquier número de estados; lo que no puede es
 aceptar una cadena que debería rechazar. Usa `accepts()` y `checkEquivalence()`.
+
+`editor-touch.test.tsx` simula la secuencia de eventos de un dedo
+(`pointerdown` / `pointermove` / `pointerup` con `pointerType: 'touch'`) sobre el
+SVG y comprueba que tocar crea estados, que dos toques crean una flecha y que
+arrastrar mueve el estado, tanto con el lienzo de escritorio como con el de
+teléfono. Corre en `jsdom` (declarado con `// @vitest-environment jsdom` en la
+primera línea del archivo). Si vuelves a tocar la interacción del lienzo,
+**esta es la prueba que tiene que seguir pasando**.
 
 `random.test.ts` es la prueba más valiosa: genera autómatas al azar y verifica
 propiedades (el mínimo es equivalente al original, los dos minimizadores
