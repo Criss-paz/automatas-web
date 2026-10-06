@@ -50,6 +50,7 @@ src/
       minimize.ts              Minimización por tabla de estados distinguibles
       equivalence.ts           Equivalencia por producto, fuerza bruta, simulate
       boolean.ts               product (∩ / ∪) y complement sobre AFD completos
+      toRegex.ts               Automata -> expresion regular (eliminacion de estados)
 
     regex/
       parser.ts                Expresión regular → AST (con clases, {n,m}, ~, &&, -)
@@ -108,7 +109,14 @@ resultados incorrectos **sin que nada falle visiblemente**.
    solo tumba la aplicación entera al cargarla en un iPhone antiguo. Captura el
    carácter anterior en un grupo si necesitas ese efecto.
 
-7. **Todo acceso a `localStorage` va dentro de `try/catch`.** En modo privado o
+7. **El signo `+` de una expresión regular es ambiguo.** En notación POSIX es
+   "una o más"; en muchos libros es la unión (`(11+0)*`). Las dos lecturas son
+   incompatibles, así que `parseRegex` recibe `plusAsUnion` y `plusLooksLikeUnion()`
+   lo adivina de forma conservadora: ante la duda gana "una o más", para no
+   cambiar el significado de expresiones ya escritas. No conviertas esa
+   heurística en algo más agresivo sin actualizar sus pruebas.
+
+8. **Todo acceso a `localStorage` va dentro de `try/catch`.** En modo privado o
    con ajustes estrictos, leer o escribir lanza excepción.
 
 ## 5. Cómo hacer los cambios más habituales
@@ -137,6 +145,22 @@ resultados incorrectos **sin que nada falle visiblemente**.
   verlo nunca.
 - Si es azúcar sintáctico (como `{n,m}`) → exprésalo en `desugar()` y no toques
   Thompson.
+
+### Añadir una propiedad al describidor de lenguajes
+
+`src/core/describe.ts` no inventa frases: prueba un **catálogo** de propiedades y
+comprueba por equivalencia de autómatas cuáles se cumplen. Para añadir una:
+
+1. Construye su AFD en `nl/builders.ts` (si no existe ya).
+2. Añádela a `catalog()` con la frase en español que la describe.
+3. Mantén el catálogo **acotado**: cada entrada cuesta una construcción del
+   producto por cada descripción. Las entradas que dependen del tamaño del
+   alfabeto van dentro de un `if (alphabet.length <= 4)`.
+
+**La regla que no se puede romper: nunca afirmar lo que no se demostró.** Si no
+se encuentra una frase que describa el lenguaje por completo, se devuelve
+`exact: null` y solo las propiedades probadas (`facts`), que son superconjuntos
+verificados. Esa distinción llega hasta la interfaz.
 
 ### Añadir un formato de especificación formal
 
@@ -186,6 +210,8 @@ estado.
 | `core/random.test.ts` | Propiedades sobre autómatas generados al azar |
 | `ui/render.test.tsx` | Humo: que los componentes pinten sin excepciones |
 | `ui/editor-touch.test.tsx` | Interacción táctil real del lienzo (jsdom) |
+| `core/toregex.test.ts` | Autómata → expresión regular, ida y vuelta |
+| `core/hoja.test.ts` | Ejercicios tipo hoja de trabajo del curso |
 
 **Estilo de prueba preferido: comprobar el lenguaje, no la estructura.** Un
 autómata correcto puede tener cualquier número de estados; lo que no puede es
@@ -198,6 +224,13 @@ arrastrar mueve el estado, tanto con el lienzo de escritorio como con el de
 teléfono. Corre en `jsdom` (declarado con `// @vitest-environment jsdom` en la
 primera línea del archivo). Si vuelves a tocar la interacción del lienzo,
 **esta es la prueba que tiene que seguir pasando**.
+
+`toregex.test.ts` comprueba la conversión a expresión regular **de ida y
+vuelta**: convierte el autómata en expresión, la expresión de nuevo en autómata,
+y exige que acepten el mismo lenguaje, sobre 150 autómatas aleatorios. Es lo que
+verifica a la vez la eliminación de estados y las simplificaciones algebraicas
+sin depender de cómo quede escrita la expresión. Si tocas `toRegex.ts`, esta
+prueba es la que manda.
 
 `random.test.ts` es la prueba más valiosa: genera autómatas al azar y verifica
 propiedades (el mínimo es equivalente al original, los dos minimizadores

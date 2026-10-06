@@ -310,3 +310,114 @@ export function startsAndEndsSame(alphabet: string[]): Automaton {
   }
   return acc === null ? anyString(alphabet) : { ...acc, name: 'empieza y termina con el mismo simbolo' }
 }
+
+// ---------------------------------------------------------------------------
+// Conteo de subcadenas y orden entre ellas
+// ---------------------------------------------------------------------------
+
+/**
+ * Cadenas con A LO SUMO n apariciones de la subcadena w.
+ *
+ * Las apariciones se cuentan **solapadas**, que es la lectura habitual: en
+ * "000" hay dos parejas de ceros (posiciones 1-2 y 2-3), no una. Por eso tras
+ * una coincidencia el automata no vuelve al principio, sino al estado que marca
+ * la funcion de fallo de KMP, igual que en endsWith.
+ */
+export function substringAtMost(alphabet: string[], w: string, n: number): Automaton {
+  const fail = kmpFail(w)
+  const m = w.length
+  const anchos = n + 1 // cuentas posibles: 0..n
+  const trap = (m + 1) * anchos
+  const idx = (k: number, c: number) => k * anchos + c
+
+  const labels: string[] = []
+  for (let k = 0; k <= m; k++) for (let c = 0; c <= n; c++) labels[idx(k, c)] = `k${k}·${c}`
+  labels[trap] = 'T'
+
+  const finals = Array.from({ length: trap }, (_, i) => i) // todo menos la trampa
+
+  return dfa(`a lo sumo ${n} apariciones de "${w}"`, alphabet, trap + 1, labels, finals, (i, sym) => {
+    if (i === trap) return trap
+    const k = Math.floor(i / anchos)
+    const c = i % anchos
+    // Tras una coincidencia se continua desde el fallo, para contar solapes.
+    const desde = k === m ? fail[m - 1] : k
+    const k2 = kmpNext(w, fail, desde, sym)
+    if (k2 === m) {
+      const c2 = c + 1
+      return c2 > n ? trap : idx(k2, c2)
+    }
+    return idx(k2, c)
+  })
+}
+
+/** Cadenas con EXACTAMENTE n apariciones (solapadas) de la subcadena w. */
+export function substringExactly(alphabet: string[], w: string, n: number): Automaton {
+  const base = substringAtMost(alphabet, w, n)
+  // De "a lo sumo n" a "exactamente n": solo son finales los estados cuya
+  // cuenta ya llego a n.
+  return {
+    ...base,
+    name: `exactamente ${n} apariciones de "${w}"`,
+    states: base.states.map((s) => ({ ...s, isFinal: s.label.endsWith(`·${n}`) })),
+  }
+}
+
+/**
+ * Cadenas donde TODA aparicion de `primera` ocurre ANTES que cualquier
+ * aparicion de `segunda`.
+ *
+ * Se lleva a la vez la busqueda de las dos subcadenas. En cuanto se completa
+ * una aparicion de `segunda` se levanta una bandera; si despues se completa una
+ * aparicion de `primera`, la cadena se rechaza. Si ambas se completan con el
+ * mismo simbolo no hay violacion: una no va "despues" de la otra.
+ */
+export function allBefore(alphabet: string[], primera: string, segunda: string): Automaton {
+  const f1 = kmpFail(primera)
+  const f2 = kmpFail(segunda)
+  const m1 = primera.length
+  const m2 = segunda.length
+
+  // Estado = (k1, k2, bandera). Con la bandera puesta k2 ya no importa y se
+  // deja en 0, para no multiplicar estados inutiles.
+  const anchoK2 = m2 + 1
+  const idx = (k1: number, k2: number, visto: boolean) => (visto ? 1 : 0) * (m1 + 1) * anchoK2 + k1 * anchoK2 + k2
+  const total = 2 * (m1 + 1) * anchoK2
+  const trap = total
+
+  const labels: string[] = []
+  for (let v = 0; v <= 1; v++) {
+    for (let k1 = 0; k1 <= m1; k1++) {
+      for (let k2 = 0; k2 < anchoK2; k2++) labels[idx(k1, k2, v === 1)] = `${v ? '≥' : '<'}${k1},${k2}`
+    }
+  }
+  labels[trap] = 'T'
+
+  const finals = Array.from({ length: total }, (_, i) => i)
+
+  return dfa(
+    `toda aparicion de "${primera}" va antes que cualquiera de "${segunda}"`,
+    alphabet,
+    total + 1,
+    labels,
+    finals,
+    (i, sym) => {
+      if (i === trap) return trap
+      const visto = i >= (m1 + 1) * anchoK2
+      const resto = i - (visto ? (m1 + 1) * anchoK2 : 0)
+      const k1 = Math.floor(resto / anchoK2)
+      const k2 = resto % anchoK2
+
+      const desde1 = k1 === m1 ? f1[m1 - 1] : k1
+      const n1 = kmpNext(primera, f1, desde1, sym)
+      // Una aparicion de `primera` cuando ya se vio `segunda` rompe la condicion.
+      if (n1 === m1 && visto) return trap
+
+      if (visto) return idx(n1, 0, true)
+
+      const desde2 = k2 === m2 ? f2[m2 - 1] : k2
+      const n2 = kmpNext(segunda, f2, desde2, sym)
+      return n2 === m2 ? idx(n1, 0, true) : idx(n1, n2, false)
+    },
+  )
+}

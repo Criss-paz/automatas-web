@@ -212,7 +212,9 @@ describe('solve() completo', () => {
       expect(r.ok, `${mode}: ${r.error}`).toBe(true)
       expect(r.verification!.equivalent, `${mode} no verifico`).toBe(true)
       expect(r.verification!.brzozowskiStates).toBe(r.verification!.tableFillingStates)
-      expect(r.sections.length).toBe(6)
+      // 1 construccion · 2 identificacion · 3 determinizacion · 4 Brzozowski
+      // 5 tabla · 6 verificacion · 7 expresion regular · 8 descripcion
+      expect(r.sections.length).toBe(8)
     }
   })
 })

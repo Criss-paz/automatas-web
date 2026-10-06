@@ -167,15 +167,26 @@ export function extractAlphabet(text: string): { alphabet: string[]; declared: b
     if (syms.length >= 2) return { alphabet: syms.sort(), declared: true }
   }
 
-  // Deducir de las palabras que aparecen tras los verbos clave.
-  const found = new Set<string>()
-  const re =
-    /(?:empie[cz]\w*|comien\w*|inici\w*|termin\w*|finali[cz]\w*|acab\w*|conteng\w*|contien\w*|subcadena|prefijo|sufijo|simbolo|letra|sea|con)\s+(?:con|en|por|la|el|los|las)?\s*"?([a-z0-9]+)"?/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(t))) {
-    for (const ch of m[1]) found.add(ch)
+  // ---- deduccion a partir de las palabras citadas en el enunciado ----------
+  //
+  // Se busca en dos rondas, de mas fiable a menos. La primera ronda mira donde
+  // el enunciado nombra explicitamente una cadena ("la subcadena 101", "pareja
+  // de 0"), que casi nunca se confunde. Solo si esa ronda no encuentra nada se
+  // recurre a los verbos de condicion, que son mas ambiguos: en "con a lo sumo
+  // una pareja..." la "a" es una preposicion, no un simbolo.
+  const rondas = [
+    /(?:subcadena|cadena|palabra|secuencia|string|prefijo|sufijo|parejas?|pares?|duplas?)\s+(?:de\s+)?"?([a-z0-9]+)"?/g,
+    /(?:empie[cz]\w*|comien\w*|inici\w*|termin\w*|finali[cz]\w*|acab\w*|conteng\w*|contien\w*|inclu\w*|apare[zc]\w*)\s+(?:con|en|por|de|a|la|el|los|las)?\s*"?([a-z0-9]+)"?/g,
+  ]
+
+  for (const re of rondas) {
+    const found = new Set<string>()
+    let m: RegExpExecArray | null
+    while ((m = re.exec(t))) {
+      for (const ch of m[1]) found.add(ch)
+    }
+    if (found.size) return { alphabet: [...found].sort(), declared: false }
   }
-  if (found.size) return { alphabet: [...found].sort(), declared: false }
 
   return { alphabet: ['a', 'b'], declared: false }
 }
@@ -340,7 +351,13 @@ function detectNonRegular(t: string): string | null {
 // Catalogo de patrones
 // ---------------------------------------------------------------------------
 
-const ART = '(?:la\\s+|el\\s+|los\\s+|las\\s+|una\\s+|un\\s+|su\\s+)?'
+/**
+ * Articulo o preposicion opcional delante del literal. Se incluye "a" por giros
+ * como "no contienen a 101". Cuando "a" es de verdad el simbolo ("contiene a"),
+ * el retroceso del motor de expresiones regulares deja el grupo vacio y es el
+ * literal quien la captura, asi que admitirla aqui no quita casos.
+ */
+const ART = '(?:la\\s+|el\\s+|los\\s+|las\\s+|una\\s+|un\\s+|su\\s+|a\\s+)?'
 const KIND =
   '(?:letras?\\s+|simbolos?\\s+|caracteres?\\s+|digitos?\\s+|subcadenas?\\s+|cadenas?\\s+|palabras?\\s+|secuencias?\\s+|strings?\\s+|substring\\s+)?'
 const W = '"?([a-z0-9]+)"?'
@@ -647,6 +664,94 @@ const PATTERNS: Pattern[] = [
       automaton: B.noRepeatedAdjacent(alpha),
       reading: 'los simbolos se alternan (nunca dos iguales seguidos)',
     }),
+  },
+
+  // --- parejas de simbolos iguales y orden entre ellas ---------------------
+  {
+    /**
+     * "toda pareja de 0's contiguos aparece antes de cualquier pareja de 1's".
+     * Va antes que el patron de "a lo sumo n parejas" porque es mas especifico.
+     */
+    id: 'parejas-antes',
+    re: rx(
+      '\\b(?:toda|cada|todas\\s+las)\\s+(?:pareja|par|dupla|secuencia)\\w*\\s+de\\s+' +
+        S +
+        // normalize() ya convirtio cualquier apostrofo en comilla doble: "0's" -> 0"s
+        '(?:["´`])?s?\\s*(?:consecutiv\\w+|contigu\\w+|seguid\\w+|juntos|iguales)?\\s*' +
+        '(?:apare[zc]\\w+|va|van|esta|estan|ocurre\\w*|figura\\w*)?\\s*(?:antes|previa\\w*)\\s*(?:de|que|a)\\s*' +
+        '(?:cualquier|toda|alguna|las|la|cada)?\\s*(?:pareja|par|dupla|secuencia)\\w*\\s+de\\s+' +
+        S,
+    ),
+    words: [1, 2],
+    build: (m, alpha) => ({
+      automaton: B.allBefore(alpha, m[1] + m[1], m[2] + m[2]),
+      reading: `toda pareja "${m[1]}${m[1]}" aparece antes que cualquier pareja "${m[2]}${m[2]}"`,
+    }),
+  },
+  {
+    /** "a lo sumo una pareja de 0's consecutivos". */
+    id: 'parejas-a-lo-sumo',
+    re: rx(
+      '\\b(?:a\\s+lo\\s+sumo|a\\s+lo\\s+mas|como\\s+maximo|maximo|no\\s+mas\\s+de|cuando\\s+mucho|solo|unicamente)\\s+' +
+        NUM +
+        '\\s+(?:pareja|par|dupla|secuencia)\\w*\\s+de\\s+' +
+        S +
+        // normalize() ya convirtio cualquier apostrofo en comilla doble: "0's" -> 0"s
+        '(?:["´`])?s?\\s*(?:consecutiv\\w+|contigu\\w+|seguid\\w+|juntos|iguales)',
+    ),
+    words: [2],
+    noNegate: true,
+    build: (m, alpha) => {
+      const n = toNumber(m[1])
+      if (n === null) return null
+      return {
+        automaton: B.substringAtMost(alpha, m[2] + m[2], n),
+        reading: `a lo sumo ${n} pareja(s) de "${m[2]}" consecutivos`,
+      }
+    },
+  },
+  {
+    /** "a lo sumo 2 apariciones de aba" / "como maximo una vez la subcadena ab". */
+    id: 'apariciones-a-lo-sumo',
+    re: rx(
+      '\\b(?:a\\s+lo\\s+sumo|a\\s+lo\\s+mas|como\\s+maximo|maximo|no\\s+mas\\s+de|cuando\\s+mucho)\\s+' +
+        NUM +
+        '\\s*(?:aparicion\\w*|vece?s?|ocurrencias?)\\s+(?:de\\s+)?' +
+        ART +
+        KIND +
+        W,
+    ),
+    words: [2],
+    noNegate: true,
+    build: (m, alpha) => {
+      const n = toNumber(m[1])
+      if (n === null) return null
+      return {
+        automaton: B.substringAtMost(alpha, m[2], n),
+        reading: `a lo sumo ${n} aparicion(es) de "${m[2]}"`,
+      }
+    },
+  },
+  {
+    /** "exactamente 2 apariciones de ab". */
+    id: 'apariciones-exactas',
+    re: rx(
+      '\\b(?:exactamente|justo|precisamente)\\s+' +
+        NUM +
+        '\\s*(?:aparicion\\w*|vece?s?|ocurrencias?)\\s+(?:de\\s+)?' +
+        ART +
+        KIND +
+        W,
+    ),
+    words: [2],
+    build: (m, alpha) => {
+      const n = toNumber(m[1])
+      if (n === null) return null
+      return {
+        automaton: B.substringExactly(alpha, m[2], n),
+        reading: `exactamente ${n} aparicion(es) de "${m[2]}"`,
+      }
+    },
   },
 
   // --- cantidad par / impar ------------------------------------------------

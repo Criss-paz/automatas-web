@@ -19,6 +19,15 @@ const EXAMPLES: Record<InputMode, Array<{ label: string; text: string }>> = {
     { label: 'Empieza y termina igual', text: 'Cadenas sobre {a,b} que empiecen y terminen con el mismo símbolo' },
     { label: 'Símbolos alternados', text: 'Cadenas sobre {a,b} con símbolos alternados' },
     { label: 'Binarios múltiplos de 3', text: 'Cadenas sobre {0,1} que sean múltiplos de 3' },
+    {
+      label: 'A lo sumo una pareja de 0 y una de 1',
+      text: "Palabras con a lo sumo una pareja de 0's consecutivos y a lo sumo una pareja de 1's consecutivos",
+    },
+    {
+      label: 'Todo 00 antes que todo 11',
+      text: "Cadenas en las que toda pareja de 0's contiguos aparece antes de cualquier pareja de 1's contiguos",
+    },
+    { label: 'No contienen 101', text: 'Cadenas que no contienen a 101 como subcadena' },
   ],
   regex: [
     { label: '(a|b)*abb', text: '(a|b)*abb' },
@@ -32,6 +41,8 @@ const EXAMPLES: Record<InputMode, Array<{ label: string; text: string }>> = {
     { label: 'Intersección &&', text: 'Sigma = {a,b}\n(.*a.*) && (.*b.*)' },
     { label: 'Diferencia −', text: 'Sigma = {a,b}\n.* - (.*aa.*)' },
     { label: 'Con ε', text: '(a|ε)(a|b)*b' },
+    { label: '+ como unión: (11+0)*(00+1)*', text: '(11+0)*(00+1)*' },
+    { label: '+ como unión, anidada', text: '01 (((10)* + 111)* + 0)* 1' },
   ],
   formal: [
     {
@@ -166,12 +177,14 @@ export default function ModeSolve() {
   const [text, setText] = useState(EXAMPLES.enunciado[0].text)
   const [result, setResult] = useState<SolveResult | null>(null)
   const [busy, setBusy] = useState(false)
+  /** Como leer el "+" en una expresion regular; 'auto' lo deduce del texto. */
+  const [plusMode, setPlusMode] = useState<'auto' | 'union' | 'plus'>('auto')
 
   const run = () => {
     setBusy(true)
     setTimeout(() => {
       try {
-        setResult(solve(text, mode))
+        setResult(solve(text, mode, { plusAsUnion: plusMode === 'auto' ? undefined : plusMode === 'union' }))
       } catch (e) {
         setResult({
           ok: false,
@@ -218,6 +231,30 @@ export default function ModeSolve() {
             </button>
           ))}
         </div>
+
+        {mode === 'regex' && (
+          <div className="examples">
+            <span className="examples-label">El signo +:</span>
+            {(
+              [
+                ['auto', 'automático'],
+                ['union', '+ es unión  (11+0)*'],
+                ['plus', '+ es una o más  a+'],
+              ] as Array<['auto' | 'union' | 'plus', string]>
+            ).map(([valor, etiqueta]) => (
+              <button
+                key={valor}
+                className={'chip' + (plusMode === valor ? ' active' : '')}
+                onClick={() => {
+                  setPlusMode(valor)
+                  setResult(null)
+                }}
+              >
+                {etiqueta}
+              </button>
+            ))}
+          </div>
+        )}
 
         <textarea
           className="input-area"
@@ -327,6 +364,51 @@ function SolveOutput({ result, statement, mode }: { result: SolveResult; stateme
           </div>
         </div>
       </div>
+
+      {result.regex && (
+        <div className="panel answer-panel">
+          <h3>Respuesta</h3>
+          <div className="answer-row">
+            <span className="answer-key">Expresión regular</span>
+            <code className="answer-regex">{result.regex}</code>
+          </div>
+          {result.description && (
+            <div className="answer-row">
+              <span className="answer-key">El lenguaje, en español</span>
+              {result.description.exact ? (
+                <p className="answer-desc">
+                  Son <b>{result.description.exact}</b>.
+                </p>
+              ) : (
+                <div className="answer-desc">
+                  <p>
+                    No se encontró una frase que lo describa <b>por completo</b>, pero sí quedó demostrado que toda
+                    cadena del lenguaje cumple:
+                  </p>
+                  <ul>
+                    {result.description.facts.map((f, i) => (
+                      <li key={i}>{f}</li>
+                    ))}
+                    {result.description.facts.length === 0 && (
+                      <li>
+                        <em>ninguna propiedad del catálogo acota este lenguaje; guíate por la expresión regular y el
+                        autómata mínimo</em>
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+              <ul className="answer-facts">
+                {result.description.summary.map((s, i) => (
+                  <li key={i}>
+                    <RichText text={s} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="panel">
         <h3>Autómata inicial y autómata mínimo</h3>

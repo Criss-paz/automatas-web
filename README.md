@@ -4,6 +4,10 @@ Sistema web para **resolver, dibujar, convertir, minimizar y comparar** autómat
 todo el procedimiento paso a paso. Funciona entero en el navegador: no hay servidor y no se envía
 nada a ningún lado.
 
+Escribas lo que escribas —un enunciado en español, una expresión regular o la quíntupla— el sistema
+devuelve siempre las tres caras del mismo lenguaje: el **autómata** (con su AFD mínimo verificado),
+la **expresión regular equivalente** y una **descripción en español** de qué lenguaje es.
+
 ## Las dos formas de trabajar
 
 ### Modo 1 · Escribe el problema
@@ -18,6 +22,16 @@ Hay tres maneras de escribir la entrada:
 | **Expresión regular** | `(a\|b)*abb` | Thompson → AFN-ε → subconjuntos → AFD → mínimo. Admite clases, rangos, `{n,m}`, complemento e intersección |
 | **Especificación formal** | `Q = {q0,q1}` … `q0, a -> q1` | Lee la quíntupla, una tabla de transiciones o un JSON |
 
+Sea cual sea la entrada, la respuesta incluye:
+
+- El **AFD mínimo**, verificado con tres pruebas independientes.
+- La **expresión regular equivalente**, obtenida del mínimo por **eliminación de estados** (el
+  camino de vuelta de Thompson), con cada eliminación explicada.
+- Una **descripción del lenguaje en español**. No es una frase inventada: se prueba un catálogo de
+  propiedades y se comprueba por equivalencia de autómatas cuáles se cumplen. Si se demuestra una
+  frase que describe el lenguaje por completo, se da como exacta; si no, se listan solo las
+  propiedades que sí quedaron demostradas. Nunca se afirma algo sin verificar.
+
 Condiciones que entiende el analizador de enunciados:
 
 **Posición y forma**
@@ -27,6 +41,8 @@ Condiciones que entiende el analizador de enunciados:
   determiniza en el propio procedimiento
 - `el primer / segundo / tercer símbolo es` X · `en la posición n hay` X
 - `empieza y termina con el mismo símbolo` · `símbolos alternados`
+- `a lo sumo n parejas de 0 consecutivos` · `a lo sumo / exactamente n apariciones de` X
+- `toda pareja de 0 contiguos aparece antes de cualquier pareja de 1 contiguos`
 
 **Cantidades y longitud**
 
@@ -61,8 +77,13 @@ Condiciones que entiende el analizador de enunciados:
 | `a{3}` `a{2,4}` `a{2,}` | exactamente 3, entre 2 y 4, 2 o más |
 | `~E` `E && F` `E - F` | complemento, intersección, diferencia |
 | `ε` `λ` `&` · `∅` | cadena vacía · lenguaje vacío |
+| `+` como unión | `(11+0)*` se lee `(11\|0)*`, la notación de muchos libros |
 | `\*` | escapa un operador y lo vuelve un símbolo normal |
 | `"ab"` | símbolo de varias letras |
+
+**El signo `+` es ambiguo**: en notación POSIX significa «una o más» y en muchos libros significa la
+unión. El sistema lo deduce de cómo esté escrita la expresión (`(11+0)*` → unión; `a+b?` → una o
+más), te dice cuál leyó, y hay un selector para forzar la lectura que quieras.
 
 `.`, `[^…]` y `~` necesitan saber cuál es Σ: se declara en una primera línea, `Sigma = {a,b}`, y
 debajo se escribe la expresión. El complemento, la intersección y la diferencia no amplían lo que se
@@ -120,7 +141,9 @@ JSON. Al terminar, el sistema detecta el tipo y pregunta qué hacer:
 | Construcción del producto | `src/core/algorithms/equivalence.ts` | Verificar equivalencia y dar contraejemplo |
 | Construcción de Thompson | `src/core/regex/thompson.ts` | Expresión regular → AFN-ε |
 | Operaciones booleanas | `src/core/algorithms/boolean.ts` | Complemento, intersección y unión de AFD |
+| **Eliminación de estados** | `src/core/algorithms/toRegex.ts` | Autómata → expresión regular |
 | Analizador de enunciados | `src/core/nl/parser.ts` | Español → autómata |
+| Descripción de lenguajes | `src/core/describe.ts` | Autómata → qué lenguaje es, en español |
 
 ### Verificación del resultado
 

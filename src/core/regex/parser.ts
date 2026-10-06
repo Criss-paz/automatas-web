@@ -58,6 +58,51 @@ export interface ParseRegexOptions {
    * no se da, se deduce de los simbolos que aparecen en la propia expresion.
    */
   alphabet?: string[]
+  /**
+   * true -> el signo "+" se lee como UNION, no como "una o mas".
+   *
+   * Muchos libros y cursos escriben la union con "+": (11+0)*(00+1)*. Es
+   * incompatible con la cerradura positiva, asi que hay que elegir una de las
+   * dos lecturas; plusLooksLikeUnion() sirve para adivinarla.
+   */
+  plusAsUnion?: boolean
+}
+
+/**
+ * Adivina si el "+" de una expresion significa union en vez de "una o mas".
+ *
+ * Reglas, pensadas para no estropear las expresiones en notacion POSIX:
+ *   - Si la expresion ya usa "|" o "∪" para la union, "+" es "una o mas".
+ *   - Si algun "+" va seguido de algo que no puede empezar un operando
+ *     (el final, ")", "*", "?"), es "una o mas" con seguridad.
+ *   - Hace falta ademas una señal clara de union: un "+" con espacios
+ *     alrededor, o precedido de ")" o "*", o de un operando de dos o mas
+ *     simbolos. Asi "a+b?" se sigue leyendo como "una o mas a" seguido de b,
+ *     mientras que "(11+0)*" se lee como union.
+ */
+export function plusLooksLikeUnion(input: string): boolean {
+  if (input.includes('|') || input.includes('∪')) return false
+  let señal = false
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] !== '+') continue
+
+    let j = i + 1
+    const espacioDespues = /\s/.test(input[j] ?? '')
+    while (j < input.length && /\s/.test(input[j])) j++
+    const siguiente = input[j]
+    if (siguiente === undefined || ')*?+|'.includes(siguiente)) return false
+
+    let k = i - 1
+    const espacioAntes = k >= 0 && /\s/.test(input[k])
+    while (k >= 0 && /\s/.test(input[k])) k--
+    const anterior = input[k]
+    if (espacioAntes || espacioDespues) señal = true
+    if (anterior === ')' || anterior === '*') señal = true
+    if (anterior !== undefined && /[A-Za-z0-9]/.test(anterior) && /[A-Za-z0-9]/.test(input[k - 1] ?? '')) {
+      señal = true
+    }
+  }
+  return señal
 }
 
 /**
@@ -83,9 +128,12 @@ export function parseRegex(input: string, opts: ParseRegexOptions = {}): RegexNo
   const peek = (k = 0) => src[i + k]
   const eat = () => src[i++]
 
+  // "+" como union: lo decide quien llama (ver plusLooksLikeUnion).
+  const plusUnion = opts.plusAsUnion === true
+
   function parseExpr(): RegexNode {
     let node = parseInter()
-    while (peek() === '|' || peek() === '∪') {
+    while (peek() === '|' || peek() === '∪' || (plusUnion && peek() === '+')) {
       eat()
       node = { type: 'union', left: node, right: parseInter() }
     }
@@ -115,6 +163,7 @@ export function parseRegex(input: string, opts: ParseRegexOptions = {}): RegexNo
   function isTermEnd(c: string | undefined): boolean {
     if (c === undefined) return true
     if (c === '|' || c === '∪' || c === ')' || c === '∩' || c === '-' || c === '∖') return true
+    if (plusUnion && c === '+') return true
     return c === '&' && peek(1) === '&'
   }
 
@@ -139,7 +188,7 @@ export function parseRegex(input: string, opts: ParseRegexOptions = {}): RegexNo
       if (c === '*') {
         eat()
         node = { type: 'star', child: node }
-      } else if (c === '+') {
+      } else if (c === '+' && !plusUnion) {
         eat()
         node = { type: 'plus', child: node }
       } else if (c === '?') {

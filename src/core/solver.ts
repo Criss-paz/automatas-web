@@ -7,7 +7,9 @@ import {
   isDeterministic,
   transitionTable,
 } from './automaton'
-import { parseRegex, alphabetOf, regexToString, RegexError, splitAlphabetDeclaration } from './regex/parser'
+import { parseRegex, alphabetOf, regexToString, RegexError, splitAlphabetDeclaration, plusLooksLikeUnion } from './regex/parser'
+import { automatonToRegex } from './algorithms/toRegex'
+import { describeLanguage, LanguageDescription } from './describe'
 import { buildFromRegex } from './regex/build'
 import { parseStatement } from './nl/parser'
 import { parseFormal } from './formal'
@@ -18,6 +20,14 @@ import { checkEquivalence, bruteForceCompare } from './algorithms/equivalence'
 import { sampleWords, showWord } from './samples'
 
 export type InputMode = 'enunciado' | 'regex' | 'formal'
+
+export interface SolveOptions {
+  /**
+   * Como leer el signo "+" en una expresion regular: union (notacion de libro)
+   * o "una o mas" (notacion POSIX). Si no se indica, se deduce de la expresion.
+   */
+  plusAsUnion?: boolean
+}
 
 export interface Identification {
   alphabet: string[]
@@ -40,6 +50,10 @@ export interface SolveResult {
   initial?: Automaton
   dfa?: Automaton
   minimal?: Automaton
+  /** Expresion regular equivalente, obtenida del AFD minimo. */
+  regex?: string
+  /** Descripcion del lenguaje en español, con lo que se pudo demostrar. */
+  description?: LanguageDescription
   /** Procedimiento completo, seccionado. */
   sections: Array<{ id: string; title: string; steps: Step[] }>
   verification?: {
@@ -75,7 +89,7 @@ export function identify(a: Automaton): Identification {
  * Resuelve un problema completo del Modo 1:
  * entrada -> automata -> AFD -> minimizacion (Brzozowski) -> verificacion.
  */
-export function solve(input: string, mode: InputMode): SolveResult {
+export function solve(input: string, mode: InputMode, options: SolveOptions = {}): SolveResult {
   const notes: string[] = []
   const interpretation: string[] = []
   const sections: SolveResult['sections'] = []
@@ -87,10 +101,34 @@ export function solve(input: string, mode: InputMode): SolveResult {
   try {
     if (mode === 'regex') {
       const { alphabet: declared, expression } = splitAlphabetDeclaration(input)
-      const ast = parseRegex(expression, { alphabet: declared })
+
+      // "L ⊂ (a+b)*" no es una expresion regular: es una afirmacion de teoria de
+      // conjuntos. Conviene decirlo en vez de tratar L y ⊂ como simbolos.
+      const inclusion = expression.match(/^\s*([a-zA-Z])\s*([⊂⊆⊃⊇∈])\s*(.+)$/)
+      if (inclusion) {
+        return fail(
+          `"${expression.trim()}" no es una expresion regular, sino una afirmacion de teoria de conjuntos: dice que ` +
+            `**${inclusion[1]} es un subconjunto de ${inclusion[3].trim()}**, es decir, un lenguaje cualquiera sobre ese alfabeto. ` +
+            `No denota un lenguaje concreto, asi que no hay un automata unico que construir: lo cumplen tanto ∅ como ` +
+            `${inclusion[3].trim()} entero y todo lo que hay en medio. Si quieres el automata de **todas** las cadenas, ` +
+            `escribe directamente ${inclusion[3].trim()}.`,
+        )
+      }
+
+      // El "+" puede significar union (libro) o "una o mas" (POSIX). Si quien
+      // llama no lo fija, se deduce de como esta escrita la expresion.
+      const plusAsUnion = options.plusAsUnion ?? plusLooksLikeUnion(expression)
+      const ast = parseRegex(expression, { alphabet: declared, plusAsUnion })
       const alpha = [...new Set([...(declared ?? []), ...alphabetOf(ast)])].sort()
       if (alpha.length === 0) return fail('La expresion regular no usa ningun simbolo del alfabeto.')
       interpretation.push(`Expresion regular interpretada: **${regexToString(ast)}**`)
+      if (expression.includes('+')) {
+        interpretation.push(
+          plusAsUnion
+            ? `El signo **+** se leyo como **union** (la notacion de muchos libros: (11+0)* significa (11|0)*).`
+            : `El signo **+** se leyo como **"una o mas"**. Si en tu curso + significa union, cambialo en el selector de notacion.`,
+        )
+      }
       interpretation.push(
         declared ? `Alfabeto declarado: Σ = {${alpha.join(', ')}}` : `Alfabeto deducido: Σ = {${alpha.join(', ')}}`,
       )
@@ -321,6 +359,63 @@ export function solve(input: string, mode: InputMode): SolveResult {
     ],
   })
 
+  // ---------- 7. Camino de vuelta: automata -> expresion regular -----------
+  const er = automatonToRegex(minimal)
+  sections.push({
+    id: 'expresion',
+    title: '7. Expresion regular equivalente',
+    steps: [
+      {
+        title: 'Por que se puede volver',
+        body:
+          `El teorema de Kleene dice que los automatas finitos y las expresiones regulares describen exactamente ` +
+          `la misma familia de lenguajes. Thompson hace el camino de ida (expresion → automata); la **eliminacion ` +
+          `de estados** hace el de vuelta. Se parte del **AFD minimo**, que da la expresion mas corta.`,
+      },
+      ...er.steps,
+    ],
+  })
+
+  // ---------- 8. Que lenguaje es, dicho en español -------------------------
+  const description = describeLanguage(minimal)
+  const descSteps: Step[] = [
+    {
+      title: 'Como se obtiene la descripcion',
+      body:
+        `No se inventa una frase: se prueba un catalogo de propiedades conocidas y se comprueba por **equivalencia ` +
+        `de automatas** cuales se cumplen. Solo se afirma lo que quedo demostrado; si no se encuentra una frase que ` +
+        `describa el lenguaje por completo, se listan las propiedades que si se pudieron probar.`,
+    },
+  ]
+  if (description.exact) {
+    descSteps.push({
+      title: 'El lenguaje es exactamente este',
+      body: `**${description.exact}**`,
+      bullets: description.summary,
+    })
+  } else {
+    descSteps.push({
+      title: 'Propiedades demostradas del lenguaje',
+      body:
+        `No se encontro en el catalogo una frase que describa el lenguaje **por completo**. Lo que si quedo ` +
+        `demostrado es que toda cadena del lenguaje cumple lo siguiente:`,
+      bullets: description.facts.length ? description.facts : ['(ninguna propiedad del catalogo acota este lenguaje)'],
+    })
+    descSteps.push({ title: 'Datos del lenguaje', bullets: description.summary })
+  }
+  descSteps.push({
+    title: 'Cadenas de ejemplo',
+    table: {
+      caption: 'Muestra del lenguaje',
+      headers: ['Acepta', 'Rechaza'],
+      rows: Array.from({ length: Math.max(description.accepted.length, description.rejected.length) }, (_, i) => [
+        description.accepted[i] ?? '',
+        description.rejected[i] ?? '',
+      ]),
+    },
+  })
+  sections.push({ id: 'descripcion', title: '8. Que lenguaje es, dicho en español', steps: descSteps })
+
   return {
     ok: true,
     notes,
@@ -329,6 +424,8 @@ export function solve(input: string, mode: InputMode): SolveResult {
     initial,
     dfa,
     minimal,
+    regex: er.regex,
+    description,
     sections,
     verification: {
       equivalent: eq.equivalent && bf.mismatches.length === 0,
